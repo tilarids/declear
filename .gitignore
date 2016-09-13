@@ -1,5 +1,9 @@
 data
 img_data
+tesseract_data
 feed.json
 report.json
 report.html
+extract_img_data
+model_input.json
+.ipynb_checkpoints

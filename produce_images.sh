@@ -8,6 +8,6 @@ do
     echo "File $f is already converted"
   else
     $PDFIUM --png $f
-    mv ./data/*.png img_data/
+    mv ./data/*.png img_data/ || echo "File not converted"
   fi
 done
