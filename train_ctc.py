@@ -133,64 +133,76 @@ print('Defining graph')
 graph = tf.Graph()
 with graph.as_default():
 
-    ####NOTE: try variable-steps inputs and dynamic bidirectional rnn, when it's implemented in tensorflow
+    # e.g: log filter bank or MFCC features
+    # Has size [batch_size, max_stepsize, num_features], but the
+    # batch_size and max_stepsize can vary along each step
+    inputs = tf.placeholder(tf.float32, [batchSize, maxTimeSteps, nFeatures])
 
-    ####Graph input
-    inputX = tf.placeholder(tf.float32, shape=(batchSize, maxTimeSteps, nFeatures))
-    # inputX =
-    inputXw = (pt.wrap(tf.expand_dims(inputX, -1))
-                 .conv2d(3, 20, activation_fn=tf.nn.relu)
-                 # .max_pool(2, 2)
-                 .conv2d(3, 20, activation_fn=tf.nn.relu)
-                 # .max_pool(2, 2)
-                 )
-    #print (batchSize, maxTimeSteps, nFeatures)
-    # print (inputXw.shape)
-    # sys.exit(0)
-    #splitVar = inputXw.shape[1]*inputXw.shape[2]
-    #Prep input data to fit requirements of rnn.bidirectional_rnn
-    #  Reshape to 2-D tensor (nTimeSteps*batchSize, nfeatures)
-    inputXrs = tf.reshape(inputXw, [-1, inputXw.shape[2]*inputXw.shape[3]])
-    #  Split to get a list of 'n_steps' tensors of shape (batch_size, n_hidden)
-    inputList = tf.split(0, inputXw.shape[1], inputXrs)
-    # print(inputList[0].shape)
-    targetIxs = tf.placeholder(tf.int64)
-    targetVals = tf.placeholder(tf.int32)
-    targetShape = tf.placeholder(tf.int64)
-    targetY = tf.SparseTensor(targetIxs, targetVals, targetShape)
-    seqLengths = tf.placeholder(tf.int32, shape=(batchSize))
+    # Here we use sparse_placeholder that will generate a
+    # SparseTensor required by ctc_loss op.
+    targets = tf.sparse_placeholder(tf.int32)
 
-    ####Weights & biases
-    weightsOutH1 = tf.Variable(tf.truncated_normal([2, nHidden],
-                                                   stddev=np.sqrt(2.0 / (2*nHidden))))
-    biasesOutH1 = tf.Variable(tf.zeros([nHidden]))
-    weightsOutH2 = tf.Variable(tf.truncated_normal([2, nHidden],
-                                                   stddev=np.sqrt(2.0 / (2*nHidden))))
-    biasesOutH2 = tf.Variable(tf.zeros([nHidden]))
-    weightsClasses = tf.Variable(tf.truncated_normal([nHidden, nClasses],
-                                                     stddev=np.sqrt(2.0 / nHidden)))
-    biasesClasses = tf.Variable(tf.zeros([nClasses]))
+    # 1d array of size [batch_size]
+    seq_len = tf.placeholder(tf.int32, [batchSize])
 
-    ####Network
-    forwardH1 = rnn_cell.LSTMCell(nHidden, use_peepholes=True, state_is_tuple=True)
-    backwardH1 = rnn_cell.LSTMCell(nHidden, use_peepholes=True, state_is_tuple=True)
-    fbH1, _, _ = bidirectional_rnn(forwardH1, backwardH1, inputList, dtype=tf.float32,
-                                       scope='BDLSTM_H1')
-    fbH1rs = [tf.reshape(t, [batchSize, 2, nHidden]) for t in fbH1]
-    outH1 = [tf.reduce_sum(tf.mul(t, weightsOutH1), reduction_indices=1) + biasesOutH1 for t in fbH1rs]
+    # Defining the cell
+    # Can be:
+    #   tf.nn.rnn_cell.RNNCell
+    #   tf.nn.rnn_cell.GRUCell
+    cell = tf.nn.rnn_cell.LSTMCell(nHidden, state_is_tuple=True)
 
-    logits = [tf.matmul(t, weightsClasses) + biasesClasses for t in outH1]
+    # Stacking rnn cells
+    # num_layers = 1
+    # stack = tf.nn.rnn_cell.MultiRNNCell([cell] * num_layers,
+    #                                     state_is_tuple=True)
 
-    ####Optimizing
-    logits3d = tf.pack(logits)
-    loss = tf.reduce_mean(ctc.ctc_loss(logits3d, targetY, seqLengths))
-    optimizer = tf.train.MomentumOptimizer(learningRate, momentum).minimize(loss)
+    inputsW = (pt.wrap(tf.expand_dims(inputs, -1))
+                 .conv2d(3, 10, activation_fn=tf.nn.relu)
+                 .conv2d(3, 10, activation_fn=tf.nn.relu))
+    # The second output is the last state and we will no use that
+    inputsW = tf.reshape(inputsW, [batchSize, maxTimeSteps, nFeatures * 10])
+    outputs, _ = tf.nn.dynamic_rnn(cell, inputsW, seq_len, dtype=tf.float32)
+    # outputs, _ = tf.nn.dynamic_rnn(cell, inputs, seq_len, dtype=tf.float32)
 
-    ####Evaluating
-    logitsMaxTest = tf.slice(tf.argmax(logits3d, 2), [0, 0], [seqLengths[0], 1])
-    predictions = tf.to_int32(ctc.ctc_beam_search_decoder(logits3d, seqLengths)[0][0])
-    errorRate = tf.reduce_sum(tf.edit_distance(predictions, targetY, normalize=False)) / \
-                tf.to_float(tf.size(targetY.values))
+    shape = tf.shape(inputs)
+    batch_s, max_timesteps = shape[0], shape[1]
+
+    # Reshaping to apply the same weights over the timesteps
+    outputs = tf.reshape(outputs, [-1, nHidden])
+
+    # Truncated normal with mean 0 and stdev=0.1
+    # Tip: Try another initialization
+    # see https://www.tensorflow.org/versions/r0.9/api_docs/python/contrib.layers.html#initializers
+    W = tf.Variable(tf.truncated_normal([nHidden,
+                                         nClasses],
+                                        stddev=0.1))
+    # Zero initialization
+    # Tip: Is tf.zeros_initializer the same?
+    b = tf.Variable(tf.constant(0., shape=[nClasses]))
+
+    # Doing the affine projection
+    logits = tf.matmul(outputs, W) + b
+
+    # Reshaping back to the original shape
+    logits = tf.reshape(logits, [batch_s, -1, nClasses])
+
+    # Time major
+    logits = tf.transpose(logits, (1, 0, 2))
+
+    loss = tf.reduce_mean(ctc.ctc_loss(logits, targets, seq_len))
+    logitsMaxTest = tf.slice(tf.argmax(logits, 2), [0, 0], [seq_len[0], 1])
+
+    optimizer = tf.train.AdamOptimizer().minimize(loss)
+
+    # Option 2: tf.contrib.ctc.ctc_beam_search_decoder
+    # (it's slower but you'll get better results)
+    predictions = tf.to_int32(ctc.ctc_beam_search_decoder(logits, seq_len)[0][0])
+
+    # Inaccuracy: label error rate
+    errorRate = tf.reduce_sum(tf.edit_distance(predictions, targets, normalize=False)) / \
+                tf.to_float(tf.size(targets.values))
+    # ler = tf.reduce_mean(tf.edit_distance(tf.cast(predictions[0], tf.int32),
+    #                                       targets))
 
 ####Run session
 with tf.Session(graph=graph) as session:
@@ -202,9 +214,8 @@ with tf.Session(graph=graph) as session:
         batchRandIxs = np.random.permutation(len(batchedData)) #randomize batch order
         for batch, batchOrigI in enumerate(batchRandIxs):
             batchInputs, batchTargetSparse, batchSeqLengths = batchedData[batchOrigI]
-            batchTargetIxs, batchTargetVals, batchTargetShape = batchTargetSparse
-            feedDict = {inputX: batchInputs, targetIxs: batchTargetIxs, targetVals: batchTargetVals,
-                        targetShape: batchTargetShape, seqLengths: batchSeqLengths}
+            # batchTargetIxs, batchTargetVals, batchTargetShape = batchTargetSparse
+            feedDict = {inputs: batchInputs, targets: batchTargetSparse, seq_len: batchSeqLengths}
             _, l, er, lmt, pr = session.run([optimizer, loss, errorRate, logitsMaxTest, predictions], feed_dict=feedDict)
             print(np.unique(lmt)) #print unique argmax values of first sample in batch; should be blank for a while, then spit out target values
             # print(pr, batchTargetSparse)
