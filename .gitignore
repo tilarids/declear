@@ -9,3 +9,4 @@ model_input.json
 .ipynb_checkpoints
 train/
 train.tempstate*
+*.pyc
