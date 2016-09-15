@@ -7,3 +7,5 @@ report.html
 extract_img_data
 model_input.json
 .ipynb_checkpoints
+train/
+train.tempstate*

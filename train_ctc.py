@@ -100,7 +100,7 @@ def load_batched_data(model_input, batchSize):
         inputs.append(np.load(img_path))
         targets.append(np.array([CLASSES_DICT[x] for x in target_str]))
 
-    for record in model_input[:10]:
+    for record in model_input:
         # import cv2
         # cv2.imwrite('/tmp/dd/' + record['income'] + ".png", np.load(record['first_bin']))
         add_sample(record['first_bin'], record['income'])
@@ -208,6 +208,24 @@ with graph.as_default():
 with tf.Session(graph=graph) as session:
     print('Initializing')
     tf.initialize_all_variables().run()
+    saver = tf.train.Saver()
+    if False:
+        print("Restoring state...")
+        saver.restore(session, './train/save')
+        # import pdb; pdb.set_trace()
+        batchedDataPred, _, _ = load_batched_data([{
+                "income": ".",
+                "family_income": ".",
+                "first_bin": "/Users/tilarids/dev/decl/extract_img_data/0278d69820395cf130f098f79b46caa62023627a9a7362295e2c5489.pdf.1.png.first.bin.npy",
+                "second_bin": "/Users/tilarids/dev/decl/extract_img_data/0278d69820395cf130f098f79b46caa62023627a9a7362295e2c5489.pdf.1.png.second.bin.npy"
+            }] * batchSize, batchSize)
+        batchInputs, batchTargetSparse, batchSeqLengths = batchedDataPred[0]
+        pred = session.run(predictions, feed_dict={inputs: batchInputs, seq_len: batchSeqLengths})
+        predDense = session.run(tf.sparse_to_dense(pred.indices, pred.shape, pred.values))
+        # print("Prediction:", pred.values)
+        print("Prediction:", predDense)
+        print("Expected prediction:", batchTargetSparse[1])
+        sys.exit(0)
     for epoch in range(nEpochs):
         print('Epoch', epoch+1, '...')
         batchErrors = np.zeros(len(batchedData))
@@ -225,3 +243,6 @@ with tf.Session(graph=graph) as session:
             batchErrors[batch] = er*len(batchSeqLengths)
         epochErrorRate = batchErrors.sum() / totalN
         print('Epoch', epoch+1, 'error rate:', epochErrorRate)
+        if 1 == epoch % 50:
+            print("Saving state...")
+            saver.save(session, './train/save')
