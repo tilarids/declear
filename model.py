@@ -75,14 +75,19 @@ class CtcModel(object):
 
             self.predictions = tf.to_int32(ctc.ctc_beam_search_decoder(logits, self.seq_len)[0][0])
 
-            self.errorRate = tf.reduce_sum(tf.edit_distance(self.predictions, self.targets, normalize=False)) / \
+            self.error_rate = tf.reduce_sum(tf.edit_distance(self.predictions, self.targets, normalize=False)) / \
                         tf.to_float(tf.size(self.targets.values))
+
+            tf.scalar_summary('loss', self.loss)
+            tf.scalar_summary('error_rate', self.error_rate)
+            self.merged_summaries = tf.merge_all_summaries()
+
 
     def run_predictions(self, session, inputs, seq_len):
         return session.run(self.predictions, feed_dict={self.inputs: inputs, self.seq_len: seq_len})
 
     def run_train_step(self, session, inputs, seq_len, targets):
         fd = {self.inputs: inputs, self.targets: targets, self.seq_len: seq_len}
-        return session.run([self.optimizer, self.loss, self.errorRate, self.logitsMaxTest, self.predictions], feed_dict=fd)
+        return session.run([self.optimizer, self.loss, self.error_rate, self.logitsMaxTest, self.predictions, self.merged_summaries], feed_dict=fd)
 
 

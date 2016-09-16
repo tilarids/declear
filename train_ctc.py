@@ -137,9 +137,11 @@ with tf.Session(graph=ctc_model.graph) as session:
     print('Initializing')
     tf.initialize_all_variables().run()
     saver = tf.train.Saver()
+    print("Restoring state...")
+    saver.restore(session, './train/save')
     if False:
-        print("Restoring state...")
-        saver.restore(session, './train/save')
+        # print("Restoring state...")
+        # saver.restore(session, './train/save')
         # import pdb; pdb.set_trace()
         batchedDataPred, _, _ = load_batched_data([{
                 "income": ".",
@@ -154,18 +156,21 @@ with tf.Session(graph=ctc_model.graph) as session:
         print("Prediction:", predDense)
         print("Expected prediction:", batchTargetSparse[1])
         sys.exit(0)
+
+    summary_writer = tf.train.SummaryWriter('/tmp/tensorboard/run1', session.graph)
     for epoch in range(nEpochs):
         print('Epoch', epoch+1, '...')
         batchErrors = np.zeros(len(batchedData))
         batchRandIxs = np.random.permutation(len(batchedData)) #randomize batch order
         for batch, batchOrigI in enumerate(batchRandIxs):
             batchInputs, batchTargetSparse, batchSeqLengths = batchedData[batchOrigI]
-            _, l, er, lmt, pr = ctc_model.run_train_step(session, batchInputs, batchSeqLengths, batchTargetSparse)
+            _, l, er, lmt, pr, summary = ctc_model.run_train_step(session, batchInputs, batchSeqLengths, batchTargetSparse)
             print(np.unique(lmt)) #print unique argmax values of first sample in batch; should be blank for a while, then spit out target values
             if (batch % 1) == 0:
                 print('Minibatch', batch, '/', batchOrigI, 'loss:', l)
                 print('Minibatch', batch, '/', batchOrigI, 'error rate:', er)
             batchErrors[batch] = er*len(batchSeqLengths)
+            summary_writer.add_summary(summary, epoch * len(batchedData) + batch)
         epochErrorRate = batchErrors.sum() / totalN
         print('Epoch', epoch+1, 'error rate:', epochErrorRate)
         if 1 == epoch % 50:
