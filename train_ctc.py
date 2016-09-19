@@ -157,7 +157,7 @@ with tf.Session(graph=ctc_model.graph) as session:
         print("Expected prediction:", batchTargetSparse[1])
         sys.exit(0)
 
-    summary_writer = tf.train.SummaryWriter('/tmp/tensorboard/run1', session.graph)
+    summary_writer = tf.train.SummaryWriter('/tmp/tensorboard/run2', session.graph)
     for epoch in range(nEpochs):
         print('Epoch', epoch+1, '...')
         batchErrors = np.zeros(len(batchedData))

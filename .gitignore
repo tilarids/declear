@@ -1,4 +1,6 @@
 .DS_Store
+full_extract_img_data
+digits_classifier_input.json
 data
 img_data
 tesseract_data
