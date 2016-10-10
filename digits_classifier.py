@@ -38,8 +38,14 @@ def prepare_data():
         else:
             train_images.append(img)
             train_labels.append(label)
-    print "Data loaded. %d train record and %d test records" % (len(train_images), len(test_images))
-    print train_images[0]
+    if len(train_images) % BATCH_SIZE:
+        train_images = train_images[:-(len(train_images) % BATCH_SIZE)]
+        train_labels = train_labels[:-(len(train_labels) % BATCH_SIZE)]
+    if len(test_images) % BATCH_SIZE:
+        test_images = test_images[:-(len(test_images) % BATCH_SIZE)]
+        test_labels = test_labels[:-(len(test_labels) % BATCH_SIZE)]
+    print "Data loaded. %d train records and %d test records" % (len(train_images), len(test_images))
+    # print train_images[0]
     return map(np.array, [train_images, train_labels, test_images, test_labels])
 
 def permute_data(arrays, random_state=None):
@@ -66,6 +72,7 @@ def main(_=None):
                     # .max_pool(2, 2)
                     .flatten()
                     .fully_connected(500)
+                    .dropout(0.5)
                     .softmax_classifier(2, labels_placeholder))
 
     accuracy = result.softmax.evaluate_classifier(labels_placeholder,
@@ -77,7 +84,7 @@ def main(_=None):
     # Create the gradient optimizer and apply it to the graph.
     # pt.apply_optimizer adds regularization losses and sets up a step counter
     # (pt.global_step()) for you.
-    optimizer = tf.train.AdamOptimizer(0.01)
+    optimizer = tf.train.AdamOptimizer()
     train_op = pt.apply_optimizer(optimizer, losses=[result.loss])
 
     # We can set a save_path in the runner to automatically checkpoint every so

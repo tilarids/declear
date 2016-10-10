@@ -11,6 +11,7 @@ import numpy as np
 import prettytensor as pt
 import json
 import sys
+import os
 
 from model import CtcModel
 with open("model_input.json", "r") as fp:
@@ -137,8 +138,9 @@ with tf.Session(graph=ctc_model.graph) as session:
     print('Initializing')
     tf.initialize_all_variables().run()
     saver = tf.train.Saver()
-    print("Restoring state...")
-    saver.restore(session, './train/save')
+    if os.path.isfile('./train/save'):
+        print("Restoring state...")
+        saver.restore(session, './train/save')
     if False:
         # print("Restoring state...")
         # saver.restore(session, './train/save')

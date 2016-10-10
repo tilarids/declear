@@ -1,7 +1,7 @@
 set -e
 
 # PDFIUM should contain full path to pdfium_test tool.
-for f in `ls ./data/*.pdf`
+for f in `pwd`/data/*.pdf
 do
   if [ -f "./img_data/${f##*/}.0.png" ];
   then
